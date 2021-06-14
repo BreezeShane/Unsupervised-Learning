@@ -12,6 +12,7 @@
 
 ## 目录
 
-- [1.Original GAN]()
-- [2.Wasserstein GAN]()
-
+- [1.Original GAN](https://github.com/BreezeShane/Unsupervised-Learning/blob/master/Generative%20Adversaria%20Networks.py)
+- [2.Wasserstein GAN](https://github.com/BreezeShane/Unsupervised-Learning/blob/master/Wasserstein%20Generative%20Adversaria%20Networks.py)
+- [3.WGAN-gp](https://github.com/BreezeShane/Unsupervised-Learning/blob/master/WGAN-gp.py)
+- [4.WGAN-div](https://github.com/BreezeShane/Unsupervised-Learning/blob/master/WGAN-div.py)
