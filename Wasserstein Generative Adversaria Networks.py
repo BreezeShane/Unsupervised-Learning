@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 h_dim = 400
 batchsz = 512
 viz = visdom.Visdom()
+USE_CUDA = True
 
 
 class Generator(nn.Module):
@@ -99,7 +100,10 @@ def generate_image(D, G, x_r, epoch):
 
     # draw contour
     with torch.no_grad():
-        points = torch.Tensor(points).cuda() # [16384, 2]
+        if USE_CUDA:
+            points = torch.Tensor(points).cuda() # [16384, 2]
+        else:
+            points = torch.Tensor(points)
         disc_map = D(points).cpu().numpy() # [16384]
     x = y = np.linspace(-RANGE, RANGE, N_POINTS)
     cs = plt.contour(x, y, disc_map.reshape((len(x), len(y))).transpose())
@@ -109,7 +113,10 @@ def generate_image(D, G, x_r, epoch):
 
     # draw samples
     with torch.no_grad():
-        z = torch.randn(batchsz, 2).cuda() # [b, 2]
+        if USE_CUDA:
+            z = torch.randn(batchsz, 2).cuda() # [b, 2]
+        else:
+            z = torch.randn(batchsz, 2)
         samples = G(z).cpu().numpy() # [b, 2]
     plt.scatter(x_r[:, 0], x_r[:, 1], c='orange', marker='.')
     plt.scatter(samples[:, 0], samples[:, 1], c='green', marker='+')
@@ -131,8 +138,14 @@ def main():
 
     data_iter = data_generator()
     x = next(data_iter)
-    G = Generator().cuda()
-    D = Discriminator().cuda()
+    if USE_CUDA:
+        G = Generator().cuda()
+    else:
+        G = Generator()
+    if USE_CUDA:
+        D = Discriminator().cuda()
+    else:
+        D = Discriminator()
     G.apply(weights_init)
     D.apply(weights_init)
     optim_G = optim.Adam(G.parameters(), lr=1e-3, betas=(0.5, 0.9))
@@ -149,11 +162,17 @@ def main():
 
         for _ in range(5):
             x_r = next(data_iter)
-            x_r = torch.from_numpy(x_r).cuda()
+            if USE_CUDA:
+                x_r = torch.from_numpy(x_r).cuda()
+            else:
+                x_r = torch.from_numpy(x_r)
             pred_r = D(x_r)  # to maximize
             loss_r = -pred_r.mean()
 
-            z = torch.randn(batchsz, 2).cuda()
+            if USE_CUDA:
+                z = torch.randn(batchsz, 2).cuda()
+            else:
+                z = torch.randn(batchsz, 2)
             x_f = G(z).detach()
             pred_f = D(x_f)
             loss_f = pred_f.mean()
@@ -167,7 +186,10 @@ def main():
             for w in D.parameters():
                 w.data.clamp_(-_clip, _clip)
 
-        z = torch.randn(batchsz, 2).cuda()
+        if USE_CUDA:
+            z = torch.randn(batchsz, 2).cuda()
+        else:
+            z = torch.randn(batchsz, 2)
         x_fake = G(z)
         pred_fake = D(x_fake)
         loss_G = -pred_fake.mean()
