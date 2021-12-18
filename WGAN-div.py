@@ -1,14 +1,11 @@
+import os
 import torch
+import argparse
 from torch import nn, optim, autograd
 import numpy as np
 import visdom
 import random
 from matplotlib import pyplot as plt
-
-h_dim = 100
-batchsz = 256
-viz = visdom.Visdom()
-USE_CUDA = True
 
 
 class Generator(nn.Module):
@@ -16,13 +13,13 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
 
         self.net = nn.Sequential(
-            nn.Linear(hide_layer, h_dim),
+            nn.Linear(hide_layer, opt.h_dim),
             nn.ReLU(True),
-            nn.Linear(h_dim, h_dim),
+            nn.Linear(opt.h_dim, opt.h_dim),
             nn.ReLU(True),
-            nn.Linear(h_dim, h_dim),
+            nn.Linear(opt.h_dim, opt.h_dim),
             nn.ReLU(True),
-            nn.Linear(h_dim, 2),
+            nn.Linear(opt.h_dim, 2),
             # 最后这个2是设定输出的维度
         )
 
@@ -37,13 +34,13 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
 
         self.net = nn.Sequential(
-            nn.Linear(hide_layer, h_dim),
+            nn.Linear(hide_layer, opt.h_dim),
             nn.ReLU(True),
-            nn.Linear(h_dim, h_dim),
+            nn.Linear(opt.h_dim, opt.h_dim),
             nn.ReLU(True),
-            nn.Linear(h_dim, h_dim),
+            nn.Linear(opt.h_dim, opt.h_dim),
             nn.ReLU(True),
-            nn.Linear(h_dim, 1),
+            nn.Linear(opt.h_dim, 1),
         )
 
     def forward(self, x):
@@ -68,7 +65,7 @@ def data_generator():
     while True:
         dataset = []
 
-        for i in range(batchsz):
+        for i in range(opt.batch_size):
             point = np.random.randn(2) * 0.02
             center = random.choice(centers)
             point[0] += center[0]
@@ -96,7 +93,7 @@ def generate_image(D, G, x_r, epoch):
 
     # draw contour
     with torch.no_grad():
-        if USE_CUDA:
+        if opt.use_cuda:
             points = torch.Tensor(points).cuda() # [16384, 2]
         else:
             points = torch.Tensor(points)
@@ -109,10 +106,10 @@ def generate_image(D, G, x_r, epoch):
 
     # draw samples
     with torch.no_grad():
-        if USE_CUDA:
-            z = torch.randn(batchsz, 2).cuda() # [b, 2]
+        if opt.use_cuda:
+            z = torch.randn(opt.batch_size, 2).cuda() # [b, 2]
         else:
-            z = torch.randn(batchsz, 2)
+            z = torch.randn(opt.batch_size, 2)
         samples = G(z).cpu().numpy() # [b, 2]
     plt.scatter(x_r[:, 0], x_r[:, 1], c='orange', marker='.')
     plt.scatter(samples[:, 0], samples[:, 1], c='green', marker='+')
@@ -128,10 +125,10 @@ def weights_init(m):
 
 
 def gradient_penalty(D, x_r, x_f, p):
-    if USE_CUDA:
-        t = torch.rand(batchsz, 1).cuda()
+    if opt.use_cuda:
+        t = torch.rand(opt.batch_size, 1).cuda()
     else:
-        t = torch.rand(batchsz, 1)
+        t = torch.rand(opt.batch_size, 1)
     t = t.expand_as(x_r)
 
     x_hat = (1 - t) * x_r + t * x_f
@@ -148,63 +145,101 @@ def gradient_penalty(D, x_r, x_f, p):
     return gp.mean()
 
 
-def main():
-    k = 2
-    p = 6
+def save_module(D, G):
+    if not os.path.exists("WGAN_gp_Model"):
+        os.mkdir("WGAN_gp_Model")
+    D_path = os.path.join("WGAN_gp_Model", "Discriminator.pt")
+    G_path = os.path.join("WGAN_gp_Model", "Generator.pt")
+    torch.save(D, D_path)
+    torch.save(G, G_path)
+
+
+def load_module():
+    if os.path.exists("WGAN_gp_Model"):
+        D_path = os.path.join("WGAN_gp_Model", "Discriminator.pt")
+        G_path = os.path.join("WGAN_gp_Model", "Generator.pt")
+        D = G = None
+        if os.path.exists(D_path) and os.path.exists(G_path):
+            D = torch.load(D_path)
+            G = torch.load(G_path)
+            return D, G
+    return None, None
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(prefix_chars='-_')
+    parser.add_argument("--use_cuda", action='store_true')
+    parser.add_argument("--use_model", action='store_true')
+    parser.add_argument("--h_dim", type=int, default=100)
+    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--main_epoch", type=int, default=50000)
+    parser.add_argument("--D_epoch", type=int, default=15)
+    parser.add_argument("--D_lr", type=float, default=5e-6)
+    parser.add_argument("--G_lr", type=float, default=5e-6)
+    parser.add_argument("--const_lambda", type=float, default=0.2)
+    parser.add_argument("--const_kappa", type=int, default=2)
+    parser.add_argument("--const_power", type=int, default=6)
+    parser.add_argument("--D_betas", type=tuple, default=(0.5, 0.9))
+    parser.add_argument("--G_betas", type=tuple, default=(0.5, 0.9))
+    opt = parser.parse_args()
+
+    viz = visdom.Visdom()
     torch.manual_seed(23)
     np.random.seed(23)
 
     data_iter = data_generator()
     x = next(data_iter)
-    if USE_CUDA:
-        G = Generator().cuda()
-    else:
-        G = Generator()
-    G.apply(weights_init)
-    if USE_CUDA:
-        D = Discriminator().cuda()
-    else:
-        D = Discriminator()
-    D.apply(weights_init)
-    optim_G = optim.Adam(G.parameters(), lr=5e-6, betas=(0.5, 0.9))
-    optim_D = optim.Adam(D.parameters(), lr=5e-6, betas=(0.5, 0.9))
+    D = G = None
+    if opt.use_model:
+        D, G = load_module()
+    if D is None or G is None:
+        if opt.use_cuda:
+            G = Generator().cuda()
+            D = Discriminator().cuda()
+        else:
+            G = Generator()
+            D = Discriminator()
+        G.apply(weights_init)
+        D.apply(weights_init)
+    optim_G = optim.Adam(G.parameters(), lr=opt.G_lr, betas=opt.G_betas)
+    optim_D = optim.Adam(D.parameters(), lr=opt.D_lr, betas=opt.D_betas)
 
     print('batch:', next(data_iter).shape)
-
     viz.line([[0, 0]], [0], win='loss', opts=dict(title='loss', legend=['D', 'G']))
+    loss_D = x_r = None
 
-    for epoch in range(50000):
+    for epoch in range(opt.main_epoch):
 
-        for _ in range(15):
+        for _ in range(opt.D_epoch):
             x_r = next(data_iter)
-            if USE_CUDA:
+            if opt.use_cuda:
                 x_r = torch.from_numpy(x_r).cuda()
             else:
                 x_r = torch.from_numpy(x_r)
             pred_r = D(x_r)  # to maximize
             loss_r = pred_r.mean()
 
-            if USE_CUDA:
-                z = torch.randn(batchsz, 2).cuda()
+            if opt.use_cuda:
+                z = torch.randn(opt.batch_size, 2).cuda()
             else:
-                z = torch.randn(batchsz, 2)
+                z = torch.randn(opt.batch_size, 2)
             x_f = G(z).detach()
             pred_f = D(x_f)
             loss_f = pred_f.mean()
 
-            gp = gradient_penalty(D, x_r, x_f, p)
+            gp = gradient_penalty(D, x_r, x_f, opt.const_power)
 
             # loss_D = loss_r + loss_f + k * gp
-            loss_D = loss_r - loss_f + k * gp
+            loss_D = loss_r - loss_f + opt.const_kappa * gp
 
             optim_D.zero_grad()  # clear to zero
             loss_D.backward()
             optim_D.step()
 
-        if USE_CUDA:
-            z = torch.randn(batchsz, 2).cuda()
+        if opt.use_cuda:
+            z = torch.randn(opt.batch_size, 2).cuda()
         else:
-            z = torch.randn(batchsz, 2)
+            z = torch.randn(opt.batch_size, 2)
         x_fake = G(z)
         pred_fake = D(x_fake)
         loss_G = pred_fake.mean()
@@ -218,6 +253,5 @@ def main():
             generate_image(D, G, x_r, epoch)
             print(loss_D.item(), loss_G.item())
 
-
-if __name__ == '__main__':
-    main()
+        if epoch % 100 == 0:
+            save_module(D, G)
