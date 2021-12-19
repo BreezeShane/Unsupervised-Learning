@@ -66,7 +66,7 @@ def data_generator():
     while True:
         dataset = []
 
-        for i in range(opt.batchsz):
+        for i in range(opt.batch_size):
             point = np.random.randn(2) * 0.02
             center = random.choice(centers)
             point[0] += center[0]
@@ -107,9 +107,9 @@ def generate_image(D, G, x_r, epoch):
     # draw samples
     with torch.no_grad():
         if opt.use_cuda:
-            z = torch.randn(opt.batchsz, 2).cuda() # [b, 2]
+            z = torch.randn(opt.batch_size, 2).cuda() # [b, 2]
         else:
-            z = torch.randn(opt.batchsz, 2)
+            z = torch.randn(opt.batch_size, 2)
         samples = G(z).cpu().numpy() # [b, 2]
     plt.scatter(x_r[:, 0], x_r[:, 1], c='orange', marker='.')
     plt.scatter(samples[:, 0], samples[:, 1], c='green', marker='+')
@@ -126,9 +126,9 @@ def weights_init(m):
 
 def gradient_penalty(D, x_r, x_f):
     if opt.use_cuda:
-        t = torch.rand(opt.batchsz, 1).cuda()
+        t = torch.rand(opt.batch_size, 1).cuda()
     else:
-        t = torch.rand(opt.batchsz, 1)
+        t = torch.rand(opt.batch_size, 1)
     t = t.expand_as(x_r)
     mid = t * x_r + (1 - t) * x_f
     mid.requires_grad_()
@@ -215,9 +215,9 @@ if __name__ == '__main__':
             pred_r = D(x_r)  # to maximize
             loss_r = -pred_r.mean()
             if opt.use_cuda:
-                z = torch.randn(opt.batchsz, 2).cuda()
+                z = torch.randn(opt.batch_size, 2).cuda()
             else:
-                z = torch.randn(opt.batchsz, 2)
+                z = torch.randn(opt.batch_size, 2)
             x_f = G(z).detach()
             pred_f = D(x_f)
             loss_f = pred_f.mean()
@@ -231,9 +231,9 @@ if __name__ == '__main__':
             optim_D.step()
 
         if opt.use_cuda:
-            z = torch.randn(opt.batchsz, 2).cuda()
+            z = torch.randn(opt.batch_size, 2).cuda()
         else:
-            z = torch.randn(opt.batchsz, 2)
+            z = torch.randn(opt.batch_size, 2)
         x_fake = G(z)
         pred_fake = D(x_fake)
         loss_G = -pred_fake.mean()
