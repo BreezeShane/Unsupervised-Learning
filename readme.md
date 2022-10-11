@@ -2,6 +2,12 @@
 
 # 无监督学习简述
 
+## § Warning
+
+I've given up ML and so the repo now is unmaintained and unsupported.
+
+---
+
 ## 前言
 
 讲无监督学习之前，我们需要先稍微说一下监督学习。监督学习，在学习方式上是要求在每一个数据上添加标签，然后拿去训练，训练得出模型并测试优良之后才会用于实际当中解决问题。
